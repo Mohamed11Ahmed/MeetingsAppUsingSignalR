@@ -1,0 +1,298 @@
+﻿@model WhiteBoardDemo.Models.RoomViewModel
+@using Newtonsoft.Json
+
+
+@{
+    ViewBag.Title = "Room";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link href="~/Content/bootstrap-icons-1.10.5/font/bootstrap-icons.min.css" rel="stylesheet" />
+    <style>
+        canvas {
+            cursor: crosshair;
+        }
+
+        .whiteboard {
+            height: 100%;
+            background-color: #f5f5f5;
+            background-color: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .chat {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background-color: #f5f5f5;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+            .chat-messages ul {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+
+            .chat-messages li {
+                margin-bottom: 10px;
+            }
+
+        .chat-input {
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid #ccc;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="~/Scripts/jquery-1.10.2.min.js"></script>
+    <script src="~/Scripts/jquery.validate.min.js"></script>
+    <script src="~/Scripts/jquery.validate.unobtrusive.min.js"></script>
+    <script src="~/Scripts/jquery.signalR-2.4.3.js"></script>
+    <script src="~/signalr/hubs"></script>
+    @section Scripts{
+        @Scripts.Render("~/bundles/jquery")
+    }
+    <div class="container-fluid p-3">
+        <div class="row ">
+            <div class="col-md-12 " style="max-width: 98%; margin: auto; margin-bottom: 17px;  border-radius: 10px; display: flex; flex-direction: row; justify-content: space-between; padding: 6px 10px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);">
+                <div><h3 style=" text-transform: uppercase;">@Model.RoomName</h3></div>
+                <div>
+                    <a href="/rooms/Leave/@Model.Id" class="btn btn-danger">Leave</a>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-2">
+                <div class="whiteboard ">
+                    <div class="col-md-12 pb-2">
+                        <div class="toolbar mb-2">
+                            <div class="btn-group" role="group" aria-label="Drawing Tools">
+                                <button type="button" class="btn btn-primary m-1" id="btn_draw" onclick="draw()">
+                                    <i class="bi bi-pencil-square"></i> Draw
+                                </button>
+                                <button type="button" class="btn btn-primary m-1" id="btn_erase" onclick="erase()">
+                                    <i class="bi bi-eraser"></i> Erase
+                                </button>
+                            </div>
+
+                            <div class="btn-group " role="group" aria-label="Color and Stroke Width">
+                                <select id="font-stroke" class="custom-select" onchange="changeStroke()">
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                    <option value="5">5</option>
+                                    <option value="7">7</option>
+                                    <option value="9">9</option>
+                                </select>
+                                <input type="color" value="#000000" class="m-2" id="input_color" onchange="changeColor()">
+
+                            </div>
+                        </div>
+                        <div class="whiteboard">
+                            <canvas id="whiteboard" width="800" height="300"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="chat">
+                    <div class="chat-header">
+                        <h2>Room Chat</h2>
+                    </div>
+                    <div class="chat-messages">
+                        <ul id="messages-list" style="height:200px; overflow-y:scroll;">
+                        </ul>
+                    </div>
+
+                    <div class="chat-input">
+                        <input autocomplete="off" type="text" id="txt-message" class="form-control" placeholder="Type your message">
+                        <button type="button" id="btn-send" onclick="sendMessage()" class="btn btn-primary">Send</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+       var chatprox;
+        $(function () {
+            chatprox = $.connection.Chat;
+            $.connection.hub.start();
+            chatprox.client.newMessage = function (username, message) {
+                @*var user = @HttpContext.Current.User.Identity.Name
+                    console.log(user);*@
+                if (username != '@HttpContext.Current.User.Identity.Name') {
+                    $("#messages-list").append(`<li><b>${username}:</b> ${message}</li>`)
+
+                } else {
+                    $("#messages-list").append(`<li><b>You: </b>${message}</li>`)
+                }
+                $("#messages-list").scrollTop(9999999);
+            };
+
+        })
+        function sendMessage() {
+            if ($("#txt-message").val().trim() != "") {
+                chatprox.server.sendMessage($("#txt-message").val(),@Model.Id);
+                $("#txt-message").val("");
+
+            }
+        }
+
+        // Global Variables
+        var whiteboardrect = document.getElementById('whiteboard').getBoundingClientRect();
+        var isdrawing = true;
+        $("#btn_draw").attr('disabled', true)
+        var fontColor = '#000000';
+        var fontStroke = 1;
+        var canvas = $('#whiteboard');
+        var context = canvas[0].getContext('2d');
+        //  context.fillStyle = "#F00";
+
+
+
+
+        $(function () {
+            var hub = $.connection.whiteboard;
+
+            function drawLine(startX, startY, endX, endY, isdrawing, fontColor = "#000",fontStroke) {
+                context.beginPath();
+                context.moveTo(startX, startY);
+                context.lineTo(endX, endY);
+                if (isdrawing) {
+                    context.strokeStyle = fontColor;
+                    context.lineWidth = fontStroke;
+                }
+                else {
+                    context.strokeStyle = "#FFF";
+                    context.lineWidth = 15;
+                }
+                context.stroke();
+            }
+            hub.client.drawLine = drawLine;
+
+            $.connection.hub.start().done(function () {
+
+                canvas.on('mousedown', function (e) {
+                    var startX = e.pageX - this.offsetLeft - 22  //+ whiteboardrect.left;
+                     var startY = e.pageY - this.offsetTop - 86 //+ whiteboardrect.top;
+                  //  var startX = e.pageX - whiteboardrect.left + this.offsetLeft;
+                 //   var startY = e.pageY - whiteboardrect.top + this.offsetTop;
+                    console.log(whiteboardrect.left, whiteboardrect.top)
+                    console.log(startX, startY);
+                    console.log(this.offsetLeft, this.offsetTop)
+                    console.log(e.pageX, e.pageY);
+
+                    canvas.on('mousemove', function (e) {
+                        var endX = e.pageX - this.offsetLeft -22 //+ whiteboardrect.left;
+                        var endY = e.pageY - this.offsetTop -86 //+ whiteboardrect.top;
+                        // console.log(endX, endY);
+                        //drawLine(startX, startY, endX, endY, isdrawing);
+                        hub.server.drawLine(startX, startY, endX, endY, isdrawing, fontColor, fontStroke, @Model.Id);
+
+                        startX = endX;
+                        startY = endY;
+                    });
+
+                    $(document).on('mouseup', function () {
+                        canvas.off('mousemove');
+                        hub.server.saveWhiteboard('@Model.Id', document.getElementById("whiteboard").toDataURL())
+                        //    $(document).off('mouseup');
+                    });
+                });
+            });
+
+            if ('@Model.WhiteboardData' != null && '@Model.WhiteboardData' != '')
+                  {
+                    var img = new Image();
+                              img.onload = function () {
+                                  canvas.width = img.width;
+                                  canvas.height = img.height;
+                                context.drawImage(img, 0, 0);
+                                 };
+                          img.src = '@Model.WhiteboardData';
+                  }
+        });
+
+        function draw() {
+            if (!isdrawing) {
+                isdrawing = true;
+                $("#btn_draw").attr('disabled', true)
+                $("#btn_erase").attr('disabled', false)
+            }
+        }
+
+        function erase() {
+            if (isdrawing) {
+                isdrawing = false;
+                $("#btn_draw").attr('disabled', false)
+                $("#btn_erase").attr('disabled', true)
+
+            }
+        }
+
+        function changeColor() {
+            fontColor = $("#input_color").val();
+        }
+
+        function changeStroke() {
+            fontStroke = parseInt($("#font-stroke").val());
+        }
+
+
+        const list = @Html.Raw(JsonConvert.SerializeObject(Model.Messages));
+        for (var i = 0; i < list.length; i++) {
+            if (list[i]['ApplicationUser']['UserName'] == '@HttpContext.Current.User.Identity.Name') {
+                $("#messages-list").append(`<li><b>You:</b> ${list[i]['Text']}</li>`)
+
+            } else {
+                $("#messages-list").append(`<li><b>${list[i]['ApplicationUser']['UserName']}:</b> ${list[i]['Text']}</li>`)
+
+            }
+            $("#messages-list").scrollTop(9999999);
+
+        }
+        $('#txt-message').keypress(function (e) {
+            var key = e.which;
+            if (key == 13)  // the enter key code
+            {
+                $('#btn-send').click();
+                return false;
+            }
+        });
+    </script>
+
+
+
+</body>
+</html>
